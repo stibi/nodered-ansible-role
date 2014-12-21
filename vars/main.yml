@@ -1,0 +1,10 @@
+---
+nodered_ansible_role:
+  nodered_packages:
+    - nodejs
+    - wiringpi
+  nodered_user: nodered
+  nodered_user_groups:
+    - users
+  nodered_installation_dir: /opt/nodered
+  nodered_git_repository: https://github.com/node-red/node-red.git

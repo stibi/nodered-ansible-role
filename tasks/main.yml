@@ -1,0 +1,87 @@
+---
+
+# 28-0000060a382b Prvni cidlo (pokoj)
+# 28-000003e6bef1 Waterproof cidlo (balkon)
+
+# TODO node-red ze syslogu sypat do ELK (nepatri do nodered role)
+
+# TODO nepatri do nodered role
+# - name: Load the w1 kernel modules
+#   sudo: yes
+#   modprobe: >
+#     name={{ item }}
+#     state=present
+#   with_items:
+#     - w1-gpio
+#     - w1-therm
+#   tags: [nodered]
+# - name: Setup the w1 kernel modules to be loaded at boot
+#   sudo: yes
+#   copy: >
+#     dest=/etc/modules-load.d/w1.conf
+#     content="w1-gpio\nw1-therm\n"
+#     owner=root
+#     group=root
+#   tags: [nodered]
+
+- name: Install packages needed for nodered
+  sudo: yes
+  pacman: >
+    name={{ item }}
+    state=present
+  with_items: nodered_ansible_role.nodered_packages
+
+- name: Create non-priviledged user to run nodered
+  sudo: yes
+  user: >
+    name="{{ nodered_ansible_role.nodered_user }}"
+    createhome=no
+    append=yes
+    groups="{{ nodered_ansible_role.nodered_user_groups | join(',') }}"
+
+- name: Check if nodered is already installed
+  stat: >
+    path={{ nodered_ansible_role.nodered_installation_dir }}
+  register: nodered_installation_check
+
+- name: Clone nodered from github
+  sudo: yes
+  when: nodered_installation_check.stat.exists == false
+  git: >
+    repo={{ nodered_ansible_role.nodered_git_repository }}
+    dest={{ nodered_ansible_role.nodered_installation_dir }}
+
+# TODO group is distro specific, move to vars
+# TODO update also group in the systemd service for nodered
+- name: Setup permissions of the nodered installation
+  sudo: yes
+  file: >
+    dest={{ nodered_ansible_role.nodered_installation_dir }}
+    owner={{ nodered_ansible_role.nodered_user }}
+    group=users
+    recurse=yes
+
+# Takes quite a long time on raspi
+# When all modules are already installed, nothing is printed to stdout,
+# so I can use that fact for "changed_when" to correctly report status of
+# the task, if really something changed or not
+- name: Install the pre-requisite modules
+  sudo: yes
+  command: npm install --production
+  register: npm_install_result
+  changed_when: npm_install_result.stdout != ""
+  args:
+    chdir: "{{ nodered_ansible_role.nodered_installation_dir }}"
+
+- name: Setup a systemd service for nodered
+  sudo: yes
+  template: >
+    src=nodered.service.j2
+    dest=/usr/lib/systemd/system/nodered.service
+
+- name: Enable and start the nodered systemd service
+  sudo: yes
+  service: >
+    name=nodered
+    enabled=yes
+    state=started
